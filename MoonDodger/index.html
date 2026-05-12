@@ -21,7 +21,7 @@
 </head>
 <body>
 
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
@@ -37,7 +37,7 @@
         meteoritoImg.src = "Meteorito.png";
 
         const player = {
-            x: 180,
+            x: 380,
             speed: 5,
             estado: "idle", 
             direccion: -1,   
@@ -75,7 +75,7 @@
         function reiniciarJuego() {
             puntos = 0;
             meteoritos = [];
-            player.x = 180;
+            player.x = 380;
             player.estado = "idle";
             gameOver = false;
             frecuenciaSpawn = 60;
