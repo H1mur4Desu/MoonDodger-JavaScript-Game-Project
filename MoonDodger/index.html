@@ -13,7 +13,8 @@
         }
         canvas {
             border: 2px solid white;
-            background-color: #0f3460; 
+            /* ¡NUEVO!: Gradiente de atardecer crepuscular para mejor contraste */
+            background: linear-gradient(to bottom, #2b193d 0%, #ab4e68 60%, #e08e36 100%);
             image-rendering: pixelated; 
         }
     </style>
@@ -26,7 +27,6 @@
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
 
-        // 1. CARGAMOS LAS IMÁGENES (Añadido el meteorito)
         const idleImg = new Image();
         idleImg.src = "ASTRONAUTA_IDLE.png"; 
 
@@ -36,7 +36,6 @@
         const meteoritoImg = new Image();
         meteoritoImg.src = "Meteorito.png";
 
-        // 2. CONFIGURACIÓN DEL JUGADOR
         const player = {
             x: 180,
             speed: 5,
@@ -47,10 +46,12 @@
             velocidadAnimacion: 6 
         };
 
-        // 3. SISTEMA DE METEORITOS (¡NUEVO!)
-        let meteoritos = []; // La "caja" vacía donde guardaremos los clones
+        let meteoritos = []; 
         let relojMeteoritos = 0;
-        const FRECUENCIA_SPAWN = 45; // Cada cuántos frames sale uno nuevo (60 = 1 seg)
+        let frecuenciaSpawn = 60; // Empezamos más lento (1 por segundo)
+
+        let puntos = 0;
+        let gameOver = false;
 
         let rightPressed = false;
         let leftPressed = false;
@@ -58,6 +59,11 @@
         document.addEventListener("keydown", function(e) {
             if(e.code === "ArrowRight") rightPressed = true;
             if(e.code === "ArrowLeft") leftPressed = true;
+            
+            // ¡NUEVO!: Detectar el Enter para reiniciar si estamos en Game Over
+            if(e.code === "Enter" && gameOver) {
+                reiniciarJuego();
+            }
         });
 
         document.addEventListener("keyup", function(e) {
@@ -65,7 +71,43 @@
             if(e.code === "ArrowLeft") leftPressed = false;
         });
 
+        // ¡NUEVO!: Función para devolver todo a cero
+        function reiniciarJuego() {
+            puntos = 0;
+            meteoritos = [];
+            player.x = 180;
+            player.estado = "idle";
+            gameOver = false;
+            frecuenciaSpawn = 60;
+            relojMeteoritos = 0;
+            gameLoop(); // Volvemos a arrancar el motor
+        }
+
         function gameLoop() {
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.75)"; 
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = "white";
+                ctx.font = "40px Courier New";
+                ctx.fillText("GAME OVER", 90, canvas.height / 2 - 20);
+                
+                ctx.font = "20px Courier New";
+                ctx.fillText("Puntuación: " + Math.floor(puntos), 100, (canvas.height / 2) + 20);
+                
+                // Instrucción de reinicio
+                ctx.fillStyle = "#e08e36";
+                ctx.font = "16px Courier New";
+                ctx.fillText("Pulsa [ENTER] para reiniciar", 45, (canvas.height / 2) + 70);
+                return; 
+            }
+
+            // Puntuación pasiva por sobrevivir
+            puntos += 0.05;
+
+            // ¡NUEVO!: Multiplicador de dificultad. Aumenta un 10% cada 100 puntos.
+            let multiplicadorDificultad = 1 + (puntos / 1000);
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             // --- LÓGICA DEL JUGADOR ---
@@ -106,7 +148,7 @@
 
             let ajusteY = 0; 
             if (player.estado === "run") {
-                ajusteY = 18; // Tu número mágico
+                ajusteY = 18;
             }
             let yDinamica = (nivelDelSuelo - altoFrame) + ajusteY;
 
@@ -127,57 +169,76 @@
             }
             ctx.restore(); 
 
-            // --- LÓGICA DE SPAWN DE METEORITOS (¡NUEVO!) ---
-            relojMeteoritos++;
-            if (relojMeteoritos >= FRECUENCIA_SPAWN) {
-                let tamaño = 40; // Escalamos la imagen de 128x128 a 40x40
-                
-                // Math.random() da un número entre 0 y 1. Lo multiplicamos para dar aleatoriedad.
-                let posXAleatoria = Math.random() * (canvas.width - tamaño);
-                let velocidadAleatoria = 3 + Math.random() * 4; // Bajarán a una velocidad entre 3 y 7
+            // --- LÓGICA DE METEORITOS ---
+            // Los meteoritos salen más rápido a medida que ganas puntos (límite máximo de rapidez: cada 20 frames)
+            frecuenciaSpawn = Math.max(20, 60 - (puntos / 10));
 
-                // Metemos un nuevo objeto meteorito en nuestra lista
+            relojMeteoritos++;
+            if (relojMeteoritos >= frecuenciaSpawn) {
+                let tamaño = 40; 
+                let posXAleatoria = Math.random() * (canvas.width - tamaño);
+                
+                // ¡NUEVO!: Empiezan muy lentos (entre 1.5 y 3.5) y se multiplican con el tiempo
+                let velocidadBase = 1.5 + Math.random() * 2;
+                let velocidadAleatoria = velocidadBase * multiplicadorDificultad; 
+
                 meteoritos.push({
                     x: posXAleatoria,
-                    y: -tamaño, // Empieza justo arriba, fuera de la pantalla
+                    y: -tamaño,
                     width: tamaño,
                     height: tamaño,
                     velocidad: velocidadAleatoria
                 });
                 
-                relojMeteoritos = 0; // Reseteamos el reloj
+                relojMeteoritos = 0;
             }
 
-            // --- MOVER Y DIBUJAR METEORITOS (¡NUEVO!) ---
-            // Recorremos la lista HACIA ATRÁS. Es un truco vital de programación para que 
-            // no haya bugs al borrar elementos de una lista mientras la estamos leyendo.
+            let hitboxPlayer = {
+                x: player.x + 10,
+                y: yDinamica + 10,
+                width: anchoFrame - 20,
+                height: altoFrame - 10
+            };
+
             for (let i = meteoritos.length - 1; i >= 0; i--) {
                 let m = meteoritos[i];
-                
-                // Aplicamos la gravedad sumando a la Y
                 m.y += m.velocidad;
                 
-                // Dibujamos el meteorito
                 ctx.drawImage(meteoritoImg, m.x, m.y, m.width, m.height);
 
-                // El "Destroy": Si toca la línea del suelo lunar, lo borramos de la memoria
+                if (m.x < hitboxPlayer.x + hitboxPlayer.width &&
+                    m.x + m.width > hitboxPlayer.x &&
+                    m.y < hitboxPlayer.y + hitboxPlayer.height &&
+                    m.y + m.height > hitboxPlayer.y) {
+                    
+                    gameOver = true; 
+                }
+
                 if (m.y + m.height > nivelDelSuelo) {
-                    meteoritos.splice(i, 1); // Splice elimina 1 elemento en la posición 'i'
+                    meteoritos.splice(i, 1); 
+                    puntos += 5; // Un poco menos de puntos por esquivar para balancearlo
                 }
             }
 
-            // --- DIBUJAR EL SUELO FIJO ---
-            ctx.fillStyle = "#8a8a8a";
+            // --- INTERFAZ (UI) ---
+            // Suelo oscurecido para dar contraste con el atardecer
+            ctx.fillStyle = "#2a2a35";
             ctx.fillRect(0, nivelDelSuelo, canvas.width, canvas.height - nivelDelSuelo);
+
+            // Línea divisoria del suelo
+            ctx.fillStyle = "#e08e36";
+            ctx.fillRect(0, nivelDelSuelo, canvas.width, 2);
+
+            ctx.fillStyle = "white";
+            ctx.font = "20px Courier New";
+            ctx.fillText("Puntos: " + Math.floor(puntos), 10, 30);
 
             requestAnimationFrame(gameLoop);
         }
 
-        // Arrancamos el juego cuando TODO esté cargado
         let imagenesCargadas = 0;
         function comprobarCarga() {
             imagenesCargadas++;
-            // Ahora esperamos a 3 imágenes en lugar de 1
             if (imagenesCargadas === 3) gameLoop(); 
         }
 
